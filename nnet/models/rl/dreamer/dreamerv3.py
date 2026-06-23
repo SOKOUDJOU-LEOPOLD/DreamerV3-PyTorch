@@ -100,7 +100,7 @@ class DreamerV3(models.Model):
         # Env Type
         env_name = env_name.split("-")
         self.env_type = env_name[0]
-        assert self.env_type in ["dmc", "atari", "atari100k", "minerl", "memory_maze"]
+        assert self.env_type in ["dmc", "atari", "atari100k", "minerl", "memory_maze", "car_racing"]
 
         # Config
         self.config = AttrDict()
@@ -130,26 +130,32 @@ class DreamerV3(models.Model):
             self.config.env_params = {"maze_size": env_name[1]}
             self.config.model_size = "XL"
             self.config.time_limit = {"9x9": 1000, "11x11": 2000, "13x13": 3000, "15x15": 4000}[env_name[1]]
+        elif self.env_type == "car_racing":
+            self.config.env_class = envs.car_racing.CarRacingEnv
+            self.config.env_params = {"history_frames": 1, "img_size": (64, 64), "action_repeat": 4}
+            self.config.model_size = "S"
+            self.config.time_limit = 1000
         # Training
         self.config.batch_size = 16
         self.config.L = 64
         self.config.H = 15
-        self.config.num_envs = {"dmc": 4, "atari100k": 1, "atari": 8, "minerl": 16, "memory_maze": 8}[self.env_type]
+        self.config.num_envs = {"dmc": 4, "atari100k": 1, "atari": 8, "minerl": 16, "memory_maze": 8, "car_racing": 4}[self.env_type]
         self.config.collate_fn = {
-            "dmc": utils.CollateFn(inputs_params=[{"axis": 0}, {"axis": 1}, {"axis": 2}, {"axis": 3}, {"axis": 4}], targets_params=[]), 
-            "atari100k": utils.CollateFn(inputs_params=[{"axis": 0}, {"axis": 1}, {"axis": 2}, {"axis": 3}, {"axis": 4}], targets_params=[]), 
-            "atari": utils.CollateFn(inputs_params=[{"axis": 0}, {"axis": 1}, {"axis": 2}, {"axis": 3}, {"axis": 4}], targets_params=[]), 
+            "dmc": utils.CollateFn(inputs_params=[{"axis": 0}, {"axis": 1}, {"axis": 2}, {"axis": 3}, {"axis": 4}], targets_params=[]),
+            "atari100k": utils.CollateFn(inputs_params=[{"axis": 0}, {"axis": 1}, {"axis": 2}, {"axis": 3}, {"axis": 4}], targets_params=[]),
+            "atari": utils.CollateFn(inputs_params=[{"axis": 0}, {"axis": 1}, {"axis": 2}, {"axis": 3}, {"axis": 4}], targets_params=[]),
             "minerl": utils.CollateFn(inputs_params=[{"axis": 0}, {"axis": 1}, {"axis": 2}, {"axis": 3}, {"axis": 4}, {"axis": 5}], targets_params=[]),
-            "memory_maze": utils.CollateFn(inputs_params=[{"axis": 0}, {"axis": 1}, {"axis": 2}, {"axis": 3}, {"axis": 4}, {"axis": 5}], targets_params=[])
+            "memory_maze": utils.CollateFn(inputs_params=[{"axis": 0}, {"axis": 1}, {"axis": 2}, {"axis": 3}, {"axis": 4}, {"axis": 5}], targets_params=[]),
+            "car_racing": utils.CollateFn(inputs_params=[{"axis": 0}, {"axis": 1}, {"axis": 2}, {"axis": 3}, {"axis": 4}], targets_params=[])
         }[self.env_type]
-        self.config.epochs = {"dmc": 50, "atari100k": 50, "atari": 250, "minerl": 250, "memory_maze": 250}[self.env_type]
-        self.config.epoch_length = {"dmc": 5000, "atari100k": 2000, "atari": 12500, "minerl": 6250, "memory_maze": 12500}[self.env_type]
-        self.config.precision = {"dmc": torch.float16, "atari100k": torch.float32, "atari": torch.float16, "minerl": torch.float16, "memory_maze": torch.float16}[self.env_type]
+        self.config.epochs = {"dmc": 50, "atari100k": 50, "atari": 250, "minerl": 250, "memory_maze": 250, "car_racing": 50}[self.env_type]
+        self.config.epoch_length = {"dmc": 5000, "atari100k": 2000, "atari": 12500, "minerl": 6250, "memory_maze": 12500, "car_racing": 5000}[self.env_type]
+        self.config.precision = {"dmc": torch.float16, "atari100k": torch.float32, "atari": torch.float16, "minerl": torch.float16, "memory_maze": torch.float16, "car_racing": torch.float16}[self.env_type]
         self.config.grad_init_scale = 32.0
         self.config.augments_train = nn.Identity()
         # Eval
         self.config.eval_policy_mode = "sample"
-        self.config.eval_epidodes = {"dmc": 10, "atari100k": 10, "atari": 10, "minerl": 0, "memory_maze": 10}[self.env_type]  
+        self.config.eval_epidodes = {"dmc": 10, "atari100k": 10, "atari": 10, "minerl": 0, "memory_maze": 10, "car_racing": 10}[self.env_type]
         self.config.augments_eval = nn.Identity()      
         # Optimizer
         self.config.opt_weight_decay = 0.0
@@ -164,16 +170,16 @@ class DreamerV3(models.Model):
         self.config.actor_grad_max_norm = 100
         # Env step params
         self.config.correct_train_ratio = True # multiply env_step_period by num_envs factor
-        self.config.env_step_period = {"dmc": 512, "atari100k": 1024, "atari": 64, "minerl": 16, "memory_maze": 64}[self.env_type]
+        self.config.env_step_period = {"dmc": 512, "atari100k": 1024, "atari": 64, "minerl": 16, "memory_maze": 64, "car_racing": 512}[self.env_type]
         self.config.num_env_steps = 1
         self.config.noise = None
-        self.config.parallel_envs = {"dmc": False, "atari100k": False, "atari": False, "minerl": True, "memory_maze": False}[self.env_type] # env step in parallel for num_envs
-        self.config.thread_env_step = {"dmc": False, "atari100k": False, "atari": False, "minerl": True, "memory_maze": False}[self.env_type] # env step in other thread than train_step
+        self.config.parallel_envs = {"dmc": False, "atari100k": False, "atari": False, "minerl": True, "memory_maze": False, "car_racing": False}[self.env_type] # env step in parallel for num_envs
+        self.config.thread_env_step = {"dmc": False, "atari100k": False, "atari": False, "minerl": True, "memory_maze": False, "car_racing": False}[self.env_type] # env step in other thread than train_step
         # Replay Buffer
         self.config.buffer_capacity = int(1e6)
-        self.config.pre_fill_steps = {"dmc": 100, "atari100k": 100, "atari": 100, "minerl": 100, "memory_maze": 100}[self.env_type] # pre_fill_steps in number of buffer samples
-        self.config.include_done_transition = {"dmc": False, "atari100k": True, "atari": True, "minerl": True, "memory_maze": False}[self.env_type]
-        self.config.prioritize_ends = {"dmc": False, "atari100k": True, "atari": True, "minerl": True, "memory_maze": False}[self.env_type]
+        self.config.pre_fill_steps = {"dmc": 100, "atari100k": 100, "atari": 100, "minerl": 100, "memory_maze": 100, "car_racing": 100}[self.env_type] # pre_fill_steps in number of buffer samples
+        self.config.include_done_transition = {"dmc": False, "atari100k": True, "atari": True, "minerl": True, "memory_maze": False, "car_racing": True}[self.env_type]
+        self.config.prioritize_ends = {"dmc": False, "atari100k": True, "atari": True, "minerl": True, "memory_maze": False, "car_racing": True}[self.env_type]
         self.config.load_replay_buffer_state_dict = True # Load ReplayBuffer saved state dict
         # Return Norm
         self.config.return_norm_decay = 0.99
@@ -203,12 +209,12 @@ class DreamerV3(models.Model):
         self.config.value_layers = model_params.num_layers
         self.config.reward_layers = model_params.num_layers
         self.config.discount_layers = model_params.num_layers
-        self.config.dim_input_mlp = {"dmc": None, "atari100k": None, "atari": None, "minerl": 1178, "memory_maze": None}[self.env_type]
-        self.config.dim_output_mlp = {"dmc": None, "atari100k": None, "atari": None, "minerl": 1178, "memory_maze": None}[self.env_type]
+        self.config.dim_input_mlp = {"dmc": None, "atari100k": None, "atari": None, "minerl": 1178, "memory_maze": None, "car_racing": None}[self.env_type]
+        self.config.dim_output_mlp = {"dmc": None, "atari100k": None, "atari": None, "minerl": 1178, "memory_maze": None, "car_racing": None}[self.env_type]
         self.config.learn_initial = True
         # Actor Params
-        self.config.actor_grad = {"dmc": "dynamics", "atari100k": "reinforce", "atari": "reinforce", "minerl": "reinforce", "memory_maze": "reinforce"}[self.env_type]
-        self.config.policy_discrete = {"dmc": False, "atari100k": True, "atari": True, "minerl": True, "memory_maze": True}[self.env_type]
+        self.config.actor_grad = {"dmc": "dynamics", "atari100k": "reinforce", "atari": "reinforce", "minerl": "reinforce", "memory_maze": "reinforce", "car_racing": "dynamics"}[self.env_type]
+        self.config.policy_discrete = {"dmc": False, "atari100k": True, "atari": True, "minerl": True, "memory_maze": True, "car_racing": False}[self.env_type]
         self.config.eta_entropy = 0.0003
         # Critic Params
         self.config.lambda_td = 0.95

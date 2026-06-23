@@ -12,10 +12,5 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Sub Packages
-from . import wrappers
-from . import dm_control
-from . import atari
-from . import minerl
-from . import memory_maze
-from . import car_racing
+# Car Racing Env
+from .car_racing_env import CarRacingEnv
