@@ -1296,7 +1296,36 @@ class DreamerV3(models.Model):
 
         return {}, outputs, {}, {}
     
-    def log_figure(self, step, inputs, targets, writer, tag, save_image=False): 
+    def _imagine_from_context(self, feats, posts, context_frames, img_steps):
+
+        """ Seed prev_state from posts at context_frames (or the learned initial state if
+        context_frames==0), unroll the policy in imagination for img_steps, decode through
+        obs_net. Shared by log_figure (static grid) and export_imagination_video (mp4). """
+
+        # Initial State
+        if context_frames == 0:
+            prev_state = self.transfer_to_device(self.rssm.initial(feats.shape[0], feats.dtype))
+        else:
+            prev_state = {k: v[:, context_frames-1] for k, v in posts.items()}
+
+        # Model Imagine (B, 1+img_steps, D)
+        img_states = self.rssm.imagine(p_net=self.p_net, prev_state=prev_state, img_steps=img_steps)
+
+        # Get feat (B', 1+img_steps, 2*D)
+        feats_img = self.rssm.get_feat(img_states)
+
+        # Concat Context and Img feats
+        feats_img = torch.cat([feats[:, :context_frames], feats_img[:, 1:]], dim=1)
+
+        # Rec Images (B, L, ...)
+        if self.tuple_state:
+            image_img = self.obs_net(feats_img)[0].mode()
+        else:
+            image_img = self.obs_net(feats_img).mode()
+
+        return feats_img, image_img
+
+    def log_figure(self, step, inputs, targets, writer, tag, save_image=False):
 
         # Eval Mode
         mode = self.training
@@ -1345,26 +1374,7 @@ class DreamerV3(models.Model):
             # Imaginary
             ###############################################################################
 
-            # Initial State
-            if self.config.log_figure_context_frames == 0:
-                prev_state = self.transfer_to_device(self.rssm.initial(embed.shape[0], embed.dtype))
-            else:
-                prev_state = {k: v[:, self.config.log_figure_context_frames-1] for k, v in posts.items()}
-
-            # Model Imagine (B, 1+L-C, D)
-            img_states = self.rssm.imagine(p_net=self.p_net, prev_state=prev_state, img_steps=self.config.L-self.config.log_figure_context_frames)
-
-            # Get feat (B', 1+L-C, 2*D)
-            feats_img = self.rssm.get_feat(img_states)
-
-            # Concat Context and Img feats
-            feats_img = torch.cat([feats[:, :self.config.log_figure_context_frames], feats_img[:, 1:]], dim=1)
-
-            # Rec Images (B, L, ...)
-            if self.tuple_state:
-                image_img = self.obs_net(feats_img)[0].mode()
-            else:
-                image_img = self.obs_net(feats_img).mode()
+            _, image_img = self._imagine_from_context(feats, posts, self.config.log_figure_context_frames, self.config.L - self.config.log_figure_context_frames)
 
         # Expand is Firsts
         if self.tuple_state:
