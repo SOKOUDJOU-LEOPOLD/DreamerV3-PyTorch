@@ -216,6 +216,34 @@ class RSSM(nn.Module):
 
         return img_states
 
+    def observe_open_loop(self, prev_state, actions):
+
+        """ Open-loop prior rollout driven by a GIVEN action sequence (e.g. ground-truth
+        replay actions) instead of policy-sampled actions, used for open-loop video
+        prediction diagnostics. actions: (B, T, A). """
+
+        # Model Recurrent loop with given actions, no policy sampling
+        if self.discrete:
+            img_states = {"stoch": [prev_state["stoch"]], "deter": [prev_state["deter"]], "logits": [prev_state["logits"]]}
+        else:
+            img_states = {"stoch": [prev_state["stoch"]], "deter": [prev_state["deter"]], "mean": [prev_state["mean"]], "std": [prev_state["std"]]}
+        for t in range(actions.shape[1]):
+
+            # Forward Model
+            img_state = self.forward_img(prev_state, actions[:, t])
+
+            # Update previous state
+            prev_state = img_state
+
+            # Append to Lists
+            for key, value in img_state.items():
+                img_states[key].append(value)
+
+        # Stack Lists
+        img_states = {k: torch.stack(v, dim=1) for k, v in img_states.items()} # (B, 1+T, D)
+
+        return img_states
+
     def get_feat(self, state):
 
         # Flatten stoch size and discrete size
