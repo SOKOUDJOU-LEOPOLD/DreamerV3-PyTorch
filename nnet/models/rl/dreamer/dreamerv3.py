@@ -190,25 +190,11 @@ class DreamerV3(models.Model):
         self.config.eval_env_params = {}
         self.config.train_env_params = {}
         # Encoder / RSSM / Decoder Params
-        model_params = model_sizes[self.config.model_size]
         self.config.norm = {"class": "LayerNorm", "params": {"eps": 1e-3, "convert_float32": True}}
         self.config.free_nats = 1.0
         self.config.image_channels = 3
-        self.config.dim_cnn = model_params.dim_cnn
-        self.config.repr_layers = model_params.num_layers
-        self.config.repr_hidden_size = model_params.hidden_size
         self.config.model_discrete = 32
         self.config.model_stoch_size = 32
-        self.config.model_deter_size = model_params.deter_size
-        self.config.model_hidden_size = model_params.hidden_size
-        self.config.action_hidden_size = model_params.hidden_size
-        self.config.value_hidden_size = model_params.hidden_size
-        self.config.reward_hidden_size = model_params.hidden_size
-        self.config.discount_hidden_size = model_params.hidden_size
-        self.config.action_layers = model_params.num_layers
-        self.config.value_layers = model_params.num_layers
-        self.config.reward_layers = model_params.num_layers
-        self.config.discount_layers = model_params.num_layers
         self.config.dim_input_mlp = {"dmc": None, "atari100k": None, "atari": None, "minerl": 1178, "memory_maze": None, "car_racing": None}[self.env_type]
         self.config.dim_output_mlp = {"dmc": None, "atari100k": None, "atari": None, "minerl": 1178, "memory_maze": None, "car_racing": None}[self.env_type]
         self.config.learn_initial = True
@@ -238,6 +224,22 @@ class DreamerV3(models.Model):
         for key, value in override_config.items():
             assert key in self.config
             self.config[key] = value
+
+        # Model Size cascade (after override so override_config={"model_size": ...} takes effect)
+        model_params = model_sizes[self.config.model_size]
+        self.config.dim_cnn = model_params.dim_cnn
+        self.config.repr_layers = model_params.num_layers
+        self.config.repr_hidden_size = model_params.hidden_size
+        self.config.model_deter_size = model_params.deter_size
+        self.config.model_hidden_size = model_params.hidden_size
+        self.config.action_hidden_size = model_params.hidden_size
+        self.config.value_hidden_size = model_params.hidden_size
+        self.config.reward_hidden_size = model_params.hidden_size
+        self.config.discount_hidden_size = model_params.hidden_size
+        self.config.action_layers = model_params.num_layers
+        self.config.value_layers = model_params.num_layers
+        self.config.reward_layers = model_params.num_layers
+        self.config.discount_layers = model_params.num_layers
 
         # Create Envs
         self.env = envs.wrappers.BatchEnv([
