@@ -219,6 +219,8 @@ class DreamerV3(models.Model):
         self.config.log_figure_batch = 16
         self.config.log_figure_context_frames = 5
         self.config.running_rewards_momentum = 0.05
+        # Ablations
+        self.config.ablation_no_symlog_twohot = False
 
         # Override Config
         for key, value in override_config.items():
@@ -291,16 +293,18 @@ class DreamerV3(models.Model):
             norm=self.config.norm
         )
         self.v_net = dreamer_networks.ValueNetwork(
-            hidden_size=self.config.value_hidden_size, 
-            feat_size=feat_size, 
+            hidden_size=self.config.value_hidden_size,
+            feat_size=feat_size,
             num_mlp_layers=self.config.value_layers,
-            norm=self.config.norm
+            norm=self.config.norm,
+            use_symlog_twohot=not self.config.ablation_no_symlog_twohot
         )
         self.r_net = dreamer_networks.RewardNetwork(
-            hidden_size=self.config.reward_hidden_size, 
-            feat_size=feat_size, 
+            hidden_size=self.config.reward_hidden_size,
+            feat_size=feat_size,
             num_mlp_layers=self.config.reward_layers,
-            norm=self.config.norm
+            norm=self.config.norm,
+            use_symlog_twohot=not self.config.ablation_no_symlog_twohot
         )
         self.obs_net = dreamer_networks.ObsNetwork(
             dim_output_cnn=self.config.image_channels, 

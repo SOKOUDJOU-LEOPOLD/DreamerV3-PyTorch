@@ -31,14 +31,19 @@ class ValueNetwork(nn.Module):
         weight_init="dreamerv3_normal", 
         bias_init="zeros", 
         norm={"class": "LayerNorm", "params": {"eps": 1e-3}}, 
-        bins=255, 
-        dist_weight_init="zeros", 
-        dist_bias_init="zeros"
+        bins=255,
+        dist_weight_init="zeros",
+        dist_bias_init="zeros",
+        use_symlog_twohot=True
     ):
         super(ValueNetwork, self).__init__()
 
+        # Ablation: plain regression (raw MSE on the untransformed target) instead of
+        # the paper's symlog + twohot discrete categorical regression.
+        self.use_symlog_twohot = use_symlog_twohot
+
         self.mlp = modules.MultiLayerPerceptron(dim_input=feat_size, dim_layers=[hidden_size for _ in range(num_mlp_layers)], act_fun=act_fun, weight_init=weight_init, bias_init=bias_init, norm=norm, bias=norm is None)
-        self.linear_proj = modules.Linear(hidden_size, bins, weight_init=dist_weight_init, bias_init=dist_bias_init)
+        self.linear_proj = modules.Linear(hidden_size, bins if use_symlog_twohot else 1, weight_init=dist_weight_init, bias_init=dist_bias_init)
 
     def forward(self, x):
 
@@ -48,8 +53,15 @@ class ValueNetwork(nn.Module):
         # Output Proj
         x = self.linear_proj(x)
 
-        # Discrete SymLog Distribution
-        value_dist = distributions.SymLogDiscreteDist(logits=x, reinterpreted_batch_ndims=1, low=-20, high=20)
+        if self.use_symlog_twohot:
+
+            # Discrete SymLog Distribution
+            value_dist = distributions.SymLogDiscreteDist(logits=x, reinterpreted_batch_ndims=1, low=-20, high=20)
+
+        else:
+
+            # Ablation: raw MSE regression, no symlog compression
+            value_dist = distributions.MSEDist(x, agg="mean", reinterpreted_batch_ndims=1)
 
         return value_dist
     
