@@ -47,6 +47,60 @@ def _write_video(path, video_thwc_uint8, fps):
     container.close()
 
 
+def collect_live_episode(model, num_frames, policy_mode=None):
+
+    """ Roll out one fresh episode on model.env_eval with the current policy,
+    recording up to num_frames real (state, action, reward, done, is_first) steps.
+    Mirrors DreamerV3.play()'s loop (same state/action pairing convention: the
+    action stored alongside a state is the action that produced that state), but
+    records the trajectory instead of just the return. Real episodes can end
+    before num_frames -- the returned tensors are only as long as the episode
+    allowed (T <= num_frames). Decouples diagnostic video length from the replay
+    buffer's fixed window (model.config.L) and from the buffer's saved state_dict
+    entirely, so it works regardless of buffer save corruption. """
+
+    if policy_mode is None:
+        policy_mode = model.config.eval_policy_mode if model.config.eval_policy_mode != "both" else "sample"
+    assert policy_mode in ["sample", "mode"], policy_mode
+
+    obs = model.env_eval.reset()
+    state = model.transfer_to_device(obs.state)
+    latent = model.transfer_to_device(model.rssm.initial(1, obs.reward.dtype, detach_learned=True))
+    action = model.transfer_to_device(torch.zeros(1, model.env.num_actions, dtype=obs.reward.dtype))
+
+    states, actions, rewards, dones, is_firsts = [obs.state.cpu()], [action[0].cpu()], [obs.reward], [obs.done], [obs.is_first]
+
+    step = 0
+    while len(states) < num_frames:
+
+        with torch.no_grad():
+            emb = model.repr_net(model.preprocess_inputs(state.unsqueeze(dim=0)))
+            latent, _ = model.rssm(latent, action, emb, is_first=torch.zeros(1))
+            feat = model.rssm.get_feat(latent)
+            action = model.p_net(feat).sample() if policy_mode == "sample" else model.p_net(feat).mode()
+
+        obs = model.env_eval.step(action.argmax(dim=-1).squeeze(dim=0) if model.config.policy_discrete else action.squeeze(dim=0))
+        state = model.transfer_to_device(obs.state)
+        step += model.env_eval.action_repeat
+
+        states.append(obs.state.cpu())
+        actions.append(action[0].cpu())
+        rewards.append(obs.reward)
+        dones.append(obs.done)
+        is_firsts.append(obs.is_first)
+
+        if obs.done or step >= model.config.time_limit:
+            break
+
+    return (
+        torch.stack(states, dim=0).unsqueeze(0),
+        torch.stack(actions, dim=0).unsqueeze(0),
+        torch.stack(rewards, dim=0).unsqueeze(0),
+        torch.stack(dones, dim=0).unsqueeze(0),
+        torch.stack(is_firsts, dim=0).unsqueeze(0),
+    )
+
+
 def export_open_loop_video(model, batch, tag, out_dir, context_frames=5, total_frames=50, fps=15, batch_index=0):
 
     """ Hook A: seed RSSM memory on `context_frames` real frames, then predict the
@@ -55,9 +109,9 @@ def export_open_loop_video(model, batch, tag, out_dir, context_frames=5, total_f
     prediction] .mp4 to out_dir. """
 
     assert not model.tuple_state, "export_open_loop_video only supports non-tuple-state envs"
-    assert total_frames <= model.config.L
 
     states, actions, _, _, is_firsts = batch[:5]
+    total_frames = min(total_frames, states.shape[1])
 
     with torch.no_grad():
 

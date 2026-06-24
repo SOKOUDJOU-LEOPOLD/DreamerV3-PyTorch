@@ -7,3 +7,4 @@ callbacks/*
 .cache
 videos/*
 dreamer_env/*
+jobs/logs/*

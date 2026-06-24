@@ -35,20 +35,20 @@ import matplotlib.pyplot as plt
 from tensorboard.backend.event_processing import event_accumulator
 
 WORLD_MODEL_TAGS = [
-    "Training-step/world_model_kl_prior",
-    "Training-step/world_model_kl_post",
-    "Training-step/world_model_model_image",
-    "Training-step/world_model_model_reward",
-    "Training-step/world_model_model_discount",
+    "Training-step/world_model_loss_kl_prior",
+    "Training-step/world_model_loss_kl_post",
+    "Training-step/world_model_loss_model_image",
+    "Training-step/world_model_loss_model_reward",
+    "Training-step/world_model_loss_model_discount",
 ]
 BEHAVIOR_TAGS = [
-    "Training-step/actor_model_actor",
-    "Training-step/value_model_value",
-    "Training-step/policy_ent",
+    "Training-step/actor_model_loss",
+    "Training-step/value_model_loss",
+    "Training-step/actor_model_policy_ent",
 ]
 RETURN_TAGS = [
-    "Training-step/returns_mean",
-    "Evaluation-step/0/score",
+    "Training-step/actor_model_returns_mean",
+    "Evaluation-epoch/0/score",
 ]
 SCALE_TAGS = [
     "Training-step/perc_low",
@@ -75,13 +75,17 @@ def short_label(tag):
     return tag.split("/")[-1]
 
 
-def plot_panel(ax, scalars_by_run, tags, title, colors, hline=None):
+def plot_panel(ax, scalars_by_run, tags, title, colors, hline=None, color_by_tag=False):
     for run_i, (name, scalars) in enumerate(scalars_by_run.items()):
-        color = colors[run_i % len(colors)]
         for tag_i, tag in enumerate(tags):
             if tag in scalars:
                 steps, vals = scalars[tag]
-                linestyle = ["-", "--", "-.", ":"][tag_i % 4]
+                if color_by_tag:
+                    color = colors[tag_i % len(colors)]
+                    linestyle = "-"
+                else:
+                    color = colors[run_i % len(colors)]
+                    linestyle = ["-", "--", "-.", ":"][tag_i % 4]
                 ax.plot(steps, vals, color=color, linestyle=linestyle, alpha=0.8, label="{}:{}".format(name, short_label(tag)))
     if hline is not None:
         ax.axhline(hline, color="gray", linestyle=":", linewidth=1, label="free_nats floor")
@@ -120,10 +124,10 @@ def plot_cross_env(env_a_runs, env_b_runs, env_a_name, env_b_name, out_path, fre
     for i, name in enumerate(names):
         if name in env_a_runs:
             scalars = {name: load_scalars(env_a_runs[name], ALL_TAGS)}
-            plot_panel(axes[i, 0], scalars, WORLD_MODEL_TAGS + BEHAVIOR_TAGS, "{} -- {}".format(env_a_name, name), colors, hline=free_nats)
+            plot_panel(axes[i, 0], scalars, WORLD_MODEL_TAGS + BEHAVIOR_TAGS, "{} -- {}".format(env_a_name, name), colors, hline=free_nats, color_by_tag=True)
         if name in env_b_runs:
             scalars = {name: load_scalars(env_b_runs[name], ALL_TAGS)}
-            plot_panel(axes[i, 1], scalars, WORLD_MODEL_TAGS + BEHAVIOR_TAGS, "{} -- {}".format(env_b_name, name), colors, hline=free_nats)
+            plot_panel(axes[i, 1], scalars, WORLD_MODEL_TAGS + BEHAVIOR_TAGS, "{} -- {}".format(env_b_name, name), colors, hline=free_nats, color_by_tag=True)
 
     fig.tight_layout()
     fig.savefig(out_path, dpi=150)

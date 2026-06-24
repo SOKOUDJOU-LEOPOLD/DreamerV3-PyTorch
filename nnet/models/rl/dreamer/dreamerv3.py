@@ -414,7 +414,7 @@ class DreamerV3(models.Model):
     def load(self, path, load_optimizer=True, verbose=True, strict=True):
 
         # Load Model Checkpoint
-        checkpoint = torch.load(path, map_location=self.device)
+        checkpoint = torch.load(path, map_location=self.device, weights_only=False)
 
         # Load Model State Dict
         if checkpoint["is_distributed"] and not self.is_distributed:
@@ -431,8 +431,8 @@ class DreamerV3(models.Model):
             else:
                 self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
 
-            # Model Step
-            self.model_step.fill_(checkpoint["model_step"])
+        # Model Step
+        self.model_step.fill_(checkpoint["model_step"])
 
         # Load EMA Model State Dict
         if checkpoint["ema_model_state_dict"] is not None:
