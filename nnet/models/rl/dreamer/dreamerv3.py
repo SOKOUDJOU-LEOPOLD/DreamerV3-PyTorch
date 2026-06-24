@@ -186,6 +186,7 @@ class DreamerV3(models.Model):
         self.config.return_norm_limit = 1.0
         self.config.return_norm_perc_low = 0.05
         self.config.return_norm_perc_high = 0.95
+        self.config.return_norm_method = "percentile" # "percentile" (paper default) or "std" (ablation 3)
         # Env Params
         self.config.eval_env_params = {}
         self.config.train_env_params = {}
@@ -335,6 +336,8 @@ class DreamerV3(models.Model):
         # Percentiles
         self.register_buffer("perc_low", torch.tensor(0.0))
         self.register_buffer("perc_high", torch.tensor(0.0))
+        self.register_buffer("ret_mean", torch.tensor(0.0)) # ablation 3 (return_norm_method="std")
+        self.register_buffer("ret_std", torch.tensor(1.0)) # ablation 3 (return_norm_method="std")
         
         # Training Infos
         self.register_buffer("episodes", torch.tensor(0))
@@ -1191,6 +1194,27 @@ class DreamerV3(models.Model):
     
     def update_perc(self, returns):
 
+        # Ablation 3: std-based normalization instead of percentile EMA
+        if self.config.return_norm_method == "std":
+
+            # Compute mean / std in fp32 regardless of autocast precision, to avoid
+            # a numerical-precision artifact being mistaken for the ablation's effect
+            returns_f32 = returns.detach().float()
+            mean = returns_f32.mean()
+            std = returns_f32.std()
+
+            # Update mean / std ema
+            self.ret_mean = self.config.return_norm_decay * self.ret_mean + (1 - self.config.return_norm_decay) * mean
+            self.ret_std = self.config.return_norm_decay * self.ret_std + (1 - self.config.return_norm_decay) * std
+            self.add_info("ret_mean", self.ret_mean.item())
+            self.add_info("ret_std", self.ret_std.item())
+
+            # Compute offset, invscale
+            offset = self.ret_mean
+            invscale = torch.clip(self.ret_std, min=1.0 / self.config.return_norm_limit)
+
+            return offset.detach(), invscale.detach()
+
         # Compute percentiles (,)
         low = torch.quantile(returns.detach(), q=self.config.return_norm_perc_low)
         high = torch.quantile(returns.detach(), q=self.config.return_norm_perc_high)
@@ -1206,8 +1230,14 @@ class DreamerV3(models.Model):
         invscale = torch.clip(self.perc_high - self.perc_low, min=1.0 / self.config.return_norm_limit)
 
         return offset.detach(), invscale.detach()
-    
+
     def get_perc(self):
+
+        # Ablation 3: std-based normalization instead of percentile EMA
+        if self.config.return_norm_method == "std":
+            offset = self.ret_mean
+            invscale = torch.clip(self.ret_std, min=1.0 / self.config.return_norm_limit)
+            return offset.detach(), invscale.detach()
 
         # Compute offset, invscale
         offset = self.perc_low
