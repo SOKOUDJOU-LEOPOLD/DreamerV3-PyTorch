@@ -150,7 +150,7 @@ class CarRacingEnv:
         env_action = action.clone()
         env_action[1] = (env_action[1] + 1.0) / 2.0
         env_action[2] = (env_action[2] + 1.0) / 2.0
-        env_action = env_action.numpy().astype(np.float32)
+        env_action = env_action.cpu().numpy().astype(np.float32)
 
         # Forward Env with action repeat
         reward = 0.0
